@@ -5,7 +5,7 @@ import uuid
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
@@ -46,6 +46,8 @@ app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path.startswith("/books"):
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
     return JSONResponse(
         status_code=422,
         content={"detail": "Invalid request. Please contact ngurahbaskara@gmail.com for assistance."},
@@ -73,6 +75,13 @@ class BookResponse(BaseModel):
     id: str
     title: str
     author: str
+
+
+class BookListResponse(BaseModel):
+    data: list[BookResponse]
+    total: int
+    page: int
+    limit: int
 
 
 def create_access_token(username: str) -> str:
@@ -141,11 +150,36 @@ def create_book(book: BookCreate, _=Depends(get_current_user)):
     return {"id": book_id, "title": book.title, "author": book.author}
 
 
-@app.get("/books", response_model=list[BookResponse])
-def list_books(_=Depends(get_current_user)):
+@app.get("/books", response_model=BookListResponse)
+def list_books(
+    author: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    _=Depends(get_current_user),
+):
     with get_db() as conn:
-        rows = conn.execute("SELECT id, title, author FROM books").fetchall()
-    return [dict(row) for row in rows]
+        where = ""
+        params: list = []
+        if author:
+            where = " WHERE author LIKE ?"
+            params.append(f"%{author}%")
+
+        count = conn.execute(
+            f"SELECT COUNT(*) FROM books{where}", params
+        ).fetchone()[0]
+
+        offset = (page - 1) * limit
+        rows = conn.execute(
+            f"SELECT id, title, author FROM books{where} ORDER BY id LIMIT ? OFFSET ?",
+            params + [limit, offset],
+        ).fetchall()
+
+    return {
+        "data": [dict(row) for row in rows],
+        "total": count,
+        "page": page,
+        "limit": limit,
+    }
 
 
 @app.get("/books/{book_id}", response_model=BookResponse)

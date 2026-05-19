@@ -79,7 +79,10 @@ def test_list_books(client, auth_headers):
     response = client.get("/books", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
+    assert len(data["data"]) == 2
+    assert data["total"] == 2
+    assert data["page"] == 1
+    assert data["limit"] == 10
 
 
 def test_get_book(client, auth_headers):
@@ -141,7 +144,9 @@ def test_delete_book_404(client, auth_headers):
 def test_books_no_token(client):
     response = client.get("/books")
     assert response.status_code == 422
-    assert "ngurahbaskara@gmail.com" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert any("authorization" in str(e) for e in detail)
 
 
 def test_books_invalid_token(client):
@@ -153,4 +158,102 @@ def test_books_invalid_token(client):
 def test_books_wrong_token_prefix(client):
     response = client.get("/books", headers={"Authorization": "Token xxx"})
     assert response.status_code == 401
+    assert "ngurahbaskara@gmail.com" in response.json()["detail"]
+
+
+def test_list_books_filter_by_author(client, auth_headers):
+    client.post("/books", json={"title": "T1", "author": "Orwell"}, headers=auth_headers)
+    client.post("/books", json={"title": "T2", "author": "Hemingway"}, headers=auth_headers)
+    client.post("/books", json={"title": "T3", "author": "Orwell"}, headers=auth_headers)
+
+    response = client.get("/books?author=Orwell", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 2
+    assert data["total"] == 2
+    assert all(b["author"] == "Orwell" for b in data["data"])
+
+
+def test_list_books_filter_by_author_partial(client, auth_headers):
+    client.post("/books", json={"title": "T1", "author": "George Orwell"}, headers=auth_headers)
+    client.post("/books", json={"title": "T2", "author": "Mark Twain"}, headers=auth_headers)
+
+    response = client.get("/books?author=Orwell", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 1
+    assert data["total"] == 1
+
+
+def test_list_books_pagination(client, auth_headers):
+    for i in range(5):
+        client.post(
+            "/books",
+            json={"title": f"Book{i}", "author": f"Author{i}"},
+            headers=auth_headers,
+        )
+
+    response = client.get("/books?page=1&limit=2", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 2
+    assert data["total"] == 5
+    assert data["page"] == 1
+    assert data["limit"] == 2
+
+
+def test_list_books_pagination_page2(client, auth_headers):
+    for i in range(5):
+        client.post(
+            "/books",
+            json={"title": f"Book{i}", "author": f"Author{i}"},
+            headers=auth_headers,
+        )
+
+    response = client.get("/books?page=2&limit=3", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 2
+    assert data["total"] == 5
+    assert data["page"] == 2
+
+
+def test_list_books_filter_and_paginate(client, auth_headers):
+    for i in range(4):
+        client.post(
+            "/books",
+            json={"title": f"T{i}", "author": "Same"},
+            headers=auth_headers,
+        )
+    client.post("/books", json={"title": "Other", "author": "Different"}, headers=auth_headers)
+
+    response = client.get("/books?author=Same&page=1&limit=2", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 2
+    assert data["total"] == 4
+
+
+def test_create_book_missing_title(client, auth_headers):
+    response = client.post(
+        "/books",
+        json={"author": "NoTitle"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert any("title" in str(e) for e in detail)
+
+
+def test_create_book_missing_body(client, auth_headers):
+    response = client.post("/books", headers=auth_headers)
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+
+
+def test_auth_token_missing_body(client):
+    response = client.post("/auth/token")
+    assert response.status_code == 422
     assert "ngurahbaskara@gmail.com" in response.json()["detail"]
