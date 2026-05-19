@@ -21,6 +21,8 @@ def init_db():
     conn.execute(
         "CREATE TABLE IF NOT EXISTS books (id TEXT PRIMARY KEY, title TEXT NOT NULL, author TEXT NOT NULL)"
     )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_books_title ON books(title)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_books_author ON books(author)")
     conn.commit()
     conn.close()
 
