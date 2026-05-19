@@ -153,16 +153,24 @@ def create_book(book: BookCreate, _=Depends(get_current_user)):
 @app.get("/books", response_model=BookListResponse)
 def list_books(
     author: str | None = Query(None),
+    title: str | None = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     _=Depends(get_current_user),
 ):
     with get_db() as conn:
-        where = ""
+        where_clauses: list[str] = []
         params: list = []
         if author:
-            where = " WHERE author LIKE ?"
+            where_clauses.append("author LIKE ?")
             params.append(f"%{author}%")
+        if title:
+            where_clauses.append("title LIKE ?")
+            params.append(f"%{title}%")
+
+        where = ""
+        if where_clauses:
+            where = " WHERE " + " AND ".join(where_clauses)
 
         count = conn.execute(
             f"SELECT COUNT(*) FROM books{where}", params

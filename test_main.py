@@ -185,6 +185,31 @@ def test_list_books_filter_by_author_partial(client, auth_headers):
     assert data["total"] == 1
 
 
+def test_list_books_filter_by_title(client, auth_headers):
+    client.post("/books", json={"title": "1984", "author": "Orwell"}, headers=auth_headers)
+    client.post("/books", json={"title": "Brave New World", "author": "Huxley"}, headers=auth_headers)
+    client.post("/books", json={"title": "1984: The Sequel", "author": "Someone"}, headers=auth_headers)
+
+    response = client.get("/books?title=1984", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 2
+    assert data["total"] == 2
+
+
+def test_list_books_filter_by_title_and_author(client, auth_headers):
+    client.post("/books", json={"title": "1984", "author": "Orwell"}, headers=auth_headers)
+    client.post("/books", json={"title": "1984", "author": "Someone Else"}, headers=auth_headers)
+    client.post("/books", json={"title": "Animal Farm", "author": "Orwell"}, headers=auth_headers)
+
+    response = client.get("/books?title=1984&author=Orwell", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 1
+    assert data["total"] == 1
+    assert data["data"][0]["author"] == "Orwell"
+
+
 def test_list_books_pagination(client, auth_headers):
     for i in range(5):
         client.post(
